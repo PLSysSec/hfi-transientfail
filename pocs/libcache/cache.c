@@ -393,7 +393,7 @@ int reload_t(void *ptr) {
 
 // ---------------------------------------------------------------------------
 size_t detect_flush_reload_threshold() {
-  size_t reload_time = 0, flush_reload_time = 0, i, count = 1000000;
+  size_t reload_time = 0, flush_reload_time = 0, i, count = 100000;
   size_t dummy[16];
   size_t *ptr = dummy + 8;
 

@@ -13,6 +13,8 @@ extern "C" {
 #include "libcache/cacheutils.h"
 }
 
+#include "../hw_isol_gem5/tests/test-progs/hfi/hfi.h"
+
 #define SECRET 'S'
 
 // Base class
@@ -59,7 +61,17 @@ void move_animal(Animal* animal) {
 }
 
 
+
+size_t round_to_next_pow2(size_t val) {
+  size_t power = 1;
+  while(power < val) {
+    power *= 2;
+  }
+  return power;
+}
+
 int main(int argc, char **argv) {
+
   // Detect cache threshold
   if(!CACHE_MISS)
     CACHE_MISS = detect_flush_reload_threshold();
@@ -71,6 +83,36 @@ int main(int argc, char **argv) {
 
   Fish* fish = new Fish();
   Bird* bird = new Bird(); // contains secret
+
+
+  hfi_sandbox sandbox;
+  memset(&sandbox, 0, sizeof(hfi_sandbox));
+
+  sandbox.is_trusted_sandbox = false;
+
+  sandbox.code_ranges[0].base_mask = 0;
+  sandbox.code_ranges[0].ignore_mask = 0;
+  sandbox.code_ranges[0].executable = 1;
+
+  // First region --- mark private_data as inaccessible
+  const size_t private_data_len = 1;
+  const size_t private_data_len_pow2 = round_to_next_pow2(private_data_len);
+  sandbox.data_ranges[0].base_mask = reinterpret_cast<uintptr_t>(bird);
+  sandbox.data_ranges[0].ignore_mask = ~reinterpret_cast<uint64_t>(private_data_len_pow2 - 1);
+  sandbox.data_ranges[0].readable = 0;
+  sandbox.data_ranges[0].writeable = 0;
+
+  // Second region --- mark all (remaining) addresses as accessible
+  sandbox.data_ranges[1].base_mask = 0;
+  sandbox.data_ranges[1].ignore_mask = 0;
+  sandbox.data_ranges[1].readable = 1;
+  sandbox.data_ranges[1].writeable = 1;
+
+  hfi_set_sandbox_metadata(&sandbox);
+  hfi_enter_sandbox();
+
+  puts("Running poc after hfi protections");
+
 
   char* ptr = (char*)((((size_t)move_animal)) & ~(pagesize-1));
   mprotect(ptr, pagesize * 2, PROT_READ | PROT_WRITE | PROT_EXEC);
@@ -111,4 +153,6 @@ int main(int argc, char **argv) {
       }
     }
   }
+
+  hfi_exit_sandbox();
 }
